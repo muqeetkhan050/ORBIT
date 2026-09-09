@@ -1,27 +1,24 @@
-// export default function CalendarPage() {
-//   return (
-//     <div>
-//     connect your calender to see 
-//     </div>
-//   )
 
-// }
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
-// Base URL of your FastAPI backend. Set NEXT_PUBLIC_API_URL in apps/web/.env.local
-// (e.g. NEXT_PUBLIC_API_URL=http://localhost:8000). Falls back to localhost:8000.
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 export default function CalendarPage() {
-  // TODO (Step 4): replace this with real connection state fetched from the API.
-  // Flip to `true` to preview the connected view.
-  const [connected, setConnected] = useState(false)
+
+  const [connected, setConnected] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/v1/integrations/google/status`)
+      .then((res) => res.json())
+      .then((data) => setConnected(data.connected))
+      .catch(() => setConnected(false))
+  }, [])
 
   function handleConnect() {
-    // Redirects the browser to the backend route that starts Google's OAuth flow.
-    // We build this route in Step 3 — until then this will 404, which is expected.
+
     window.location.href = `${API_URL}/api/v1/integrations/google/connect`
   }
 
@@ -36,7 +33,11 @@ export default function CalendarPage() {
         </p>
       </header>
 
-      {connected ? (
+      {connected === null ? (
+        <div className="rounded-2xl border border-neutral-200 bg-white p-10 text-center text-sm text-neutral-400">
+          Checking calendar connection…
+        </div>
+      ) : connected ? (
         <ConnectedCalendar onDisconnect={() => setConnected(false)} />
       ) : (
         <ConnectEmptyState onConnect={handleConnect} />
@@ -91,7 +92,27 @@ function ConnectEmptyState({ onConnect }: { onConnect: () => void }) {
   )
 }
 
+type CalendarEvent = {
+  id: string
+  summary?: string
+  start?: { date?: string; dateTime?: string }
+  end?: { date?: string; dateTime?: string }
+}
+
 function ConnectedCalendar({ onDisconnect }: { onDisconnect: () => void }) {
+  const [events, setEvents] = useState<CalendarEvent[] | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/v1/integrations/google/events`)
+      .then((res) => {
+        if (!res.ok) throw new Error('request failed')
+        return res.json()
+      })
+      .then((data) => setEvents(data))
+      .catch(() => setError('Could not load your calendar events.'))
+  }, [])
+
   return (
     <div className="rounded-2xl border border-neutral-200 bg-white p-8">
       <div className="flex items-center justify-between">
@@ -109,13 +130,59 @@ function ConnectedCalendar({ onDisconnect }: { onDisconnect: () => void }) {
         </button>
       </div>
 
-      <div className="mt-8 rounded-xl border border-dashed border-neutral-200 p-10 text-center">
-        <p className="text-sm text-neutral-500">
-          Your events will appear here once we wire up event fetching (Step 4).
-        </p>
+      <div className="mt-8">
+        {error ? (
+          <p className="rounded-xl border border-dashed border-neutral-200 p-10 text-center text-sm text-red-500">
+            {error}
+          </p>
+        ) : events === null ? (
+          <p className="rounded-xl border border-dashed border-neutral-200 p-10 text-center text-sm text-neutral-400">
+            Loading events…
+          </p>
+        ) : events.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-neutral-200 p-10 text-center text-sm text-neutral-400">
+            No upcoming events.
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {events.map((event) => (
+              <li
+                key={event.id}
+                className="flex items-center justify-between rounded-lg border border-neutral-100 px-4 py-3"
+              >
+                <span className="text-sm font-medium text-neutral-800">
+                  {event.summary ?? '(No title)'}
+                </span>
+                <span className="text-xs text-neutral-400">
+                  {formatEventTime(event)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   )
+}
+
+function formatEventTime(event: CalendarEvent) {
+  const raw = event.start?.dateTime ?? event.start?.date
+  if (!raw) return ''
+
+  const date = new Date(raw)
+
+  return event.start?.dateTime
+    ? date.toLocaleString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+      })
+    : date.toLocaleDateString(undefined, {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      })
 }
 
 function Benefit({ title, body }: { title: string; body: string }) {
