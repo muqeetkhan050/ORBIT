@@ -1,3 +1,5 @@
+'use client';
+
 import {
   CalendarDays,
   CheckCircle2,
@@ -5,8 +7,22 @@ import {
   ArrowUpRight,
   Sparkles,
 } from "lucide-react";
+import {useState} from 'react';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 export default function DashboardPage() {
+
+
+  const [briefing, setBriefing] = useState<string | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+
+  function handlePrepare(){
+    setLoading(true);
+    fetch(`${API_URL}/api/v1/agent/briefing`)
+    .then ((res)=>res.json())
+    .then((data)=>setBriefing(data.briefing))
+    .finally(()=>setLoading(false));
+  }
   return (
     <div className="min-h-screen">
       <header className="border-b bg-white px-8 py-5">
@@ -85,11 +101,21 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <button className="flex shrink-0 items-center justify-center gap-2 rounded-lg bg-black px-4 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800">
-              Prepare me
+            <button
+              onClick={handlePrepare}
+              disabled={loading}
+              className="flex shrink-0 items-center justify-center gap-2 rounded-lg bg-black px-4 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800 disabled:opacity-50"
+            >
+              {loading ? "Preparing…" : "Prepare me"}
               <ArrowUpRight size={16} />
             </button>
           </div>
+
+          {briefing && (
+            <p className="mt-4 whitespace-pre-line rounded-lg bg-gray-50 p-4 text-sm text-gray-700">
+              {briefing}
+            </p>
+          )}
         </section>
 
         {/* Today's schedule */}
