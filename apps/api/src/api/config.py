@@ -15,3 +15,16 @@ GOOGLE_SCOPES = [
 ]
 
 TOKENS_FILE = ".tokens.json"
+
+GMAIL_REDIRECT_URI = os.environ["GMAIL_REDIRECT_URI"]
+
+GMAIL_SCOPES = [
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+    "https://www.googleapis.com/auth/gmail.readonly",
+]
+
+GMAIL_TOKENS_FILE = ".gmail_tokens.json"
+
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]

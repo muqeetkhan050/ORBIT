@@ -89,8 +89,7 @@ def refresh_access_token(tokens: dict) -> dict:
     return tokens
 
 
-@router.get("/events")
-def get_events():
+def fetch_calendar_events():
     if not os.path.exists(TOKENS_FILE):
         raise HTTPException(status_code=401, detail="Not connected")
 
@@ -117,3 +116,8 @@ def get_events():
 
     response.raise_for_status()
     return response.json().get("items", [])
+
+
+@router.get("/events")
+def get_events():
+    return fetch_calendar_events()
