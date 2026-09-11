@@ -1,27 +1,69 @@
-import json
-import os
 from urllib.parse import urlencode
+from datetime import datetime, timezone
 
 import httpx
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
-from datetime import datetime, timezone
-from fastapi import HTTPException
-
 
 from api.config import (
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,
     GOOGLE_REDIRECT_URI,
     GOOGLE_SCOPES,
-    TOKENS_FILE,
 )
+from api.database import SessionLocal
+from api.models import Integration
 
 router = APIRouter()
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 FRONTEND_CALENDAR_URL = "http://localhost:3000/dashboard/calendar"
+PROVIDER = "google_calendar"
+USER_ID = "default_user"
+
+
+def save_tokens(tokens: dict):
+    db = SessionLocal()
+    integration = (
+        db.query(Integration)
+        .filter_by(user_id=USER_ID, provider=PROVIDER)
+        .first()
+    )
+
+    if integration:
+        integration.access_token = tokens["access_token"]
+        if "refresh_token" in tokens:
+            integration.refresh_token = tokens["refresh_token"]
+    else:
+        integration = Integration(
+            user_id=USER_ID,
+            provider=PROVIDER,
+            access_token=tokens["access_token"],
+            refresh_token=tokens.get("refresh_token"),
+        )
+        db.add(integration)
+
+    db.commit()
+    db.close()
+
+
+def load_tokens():
+    db = SessionLocal()
+    integration = (
+        db.query(Integration)
+        .filter_by(user_id=USER_ID, provider=PROVIDER)
+        .first()
+    )
+    db.close()
+
+    if not integration:
+        return None
+
+    return {
+        "access_token": integration.access_token,
+        "refresh_token": integration.refresh_token,
+    }
 
 
 @router.get("/connect")
@@ -53,21 +95,15 @@ def callback(code: str):
     response.raise_for_status()
     tokens = response.json()
 
-    with open(TOKENS_FILE, "w") as f:
-        json.dump(tokens, f)
+    save_tokens(tokens)
 
     return RedirectResponse(f"{FRONTEND_CALENDAR_URL}?connected=true")
 
 
 @router.get("/status")
 def status():
-    if not os.path.exists(TOKENS_FILE):
-        return {"connected": False}
-
-    with open(TOKENS_FILE) as f:
-        tokens = json.load(f)
-
-    return {"connected": "access_token" in tokens}
+    tokens = load_tokens()
+    return {"connected": tokens is not None}
 
 
 def refresh_access_token(tokens: dict) -> dict:
@@ -83,18 +119,15 @@ def refresh_access_token(tokens: dict) -> dict:
     response.raise_for_status()
     tokens.update(response.json())
 
-    with open(TOKENS_FILE, "w") as f:
-        json.dump(tokens, f)
+    save_tokens(tokens)
 
     return tokens
 
 
 def fetch_calendar_events():
-    if not os.path.exists(TOKENS_FILE):
+    tokens = load_tokens()
+    if tokens is None:
         raise HTTPException(status_code=401, detail="Not connected")
-
-    with open(TOKENS_FILE) as f:
-        tokens = json.load(f)
 
     def fetch(access_token: str):
         return httpx.get(
@@ -121,3 +154,31 @@ def fetch_calendar_events():
 @router.get("/events")
 def get_events():
     return fetch_calendar_events()
+
+
+def create_calendar_event(summary: str, start_datetime: str, end_datetime: str):
+    tokens = load_tokens()
+    if tokens is None:
+        raise HTTPException(status_code=401, detail="Not connected")
+
+    body = {
+        "summary": summary,
+        "start": {"dateTime": start_datetime, "timeZone": "Australia/Brisbane"},
+        "end": {"dateTime": end_datetime, "timeZone": "Australia/Brisbane"},
+    }
+
+    def post(access_token: str):
+        return httpx.post(
+            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            headers={"Authorization": f"Bearer {access_token}"},
+            json=body,
+        )
+
+    response = post(tokens["access_token"])
+
+    if response.status_code == 401:
+        tokens = refresh_access_token(tokens)
+        response = post(tokens["access_token"])
+
+    response.raise_for_status()
+    return response.json()

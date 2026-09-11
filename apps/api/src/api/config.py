@@ -11,7 +11,7 @@ GOOGLE_SCOPES = [
     "openid",
     "https://www.googleapis.com/auth/userinfo.email",
     "https://www.googleapis.com/auth/userinfo.profile",
-    "https://www.googleapis.com/auth/calendar.readonly",
+    "https://www.googleapis.com/auth/calendar.events",
 ]
 
 TOKENS_FILE = ".tokens.json"
@@ -28,3 +28,6 @@ GMAIL_SCOPES = [
 GMAIL_TOKENS_FILE = ".gmail_tokens.json"
 
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+
+
+DATABASE_URL = os.environ["DATABASE_URL"]

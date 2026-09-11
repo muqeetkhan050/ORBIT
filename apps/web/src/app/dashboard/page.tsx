@@ -8,6 +8,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import {useState} from 'react';
+import ReactMarkdown from 'react-markdown';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 export default function DashboardPage() {
@@ -112,9 +113,51 @@ export default function DashboardPage() {
           </div>
 
           {briefing && (
-            <p className="mt-4 whitespace-pre-line rounded-lg bg-gray-50 p-4 text-sm text-gray-700">
-              {briefing}
-            </p>
+            <div className="mt-5 rounded-xl border border-gray-100 bg-gray-50 p-5">
+              <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+                <Sparkles size={14} />
+                Your briefing
+              </div>
+
+              <ReactMarkdown
+                components={{
+                  h1: ({ children }) => (
+                    <h3 className="mt-4 text-sm font-semibold text-gray-900 first:mt-0">
+                      {children}
+                    </h3>
+                  ),
+                  h2: ({ children }) => (
+                    <h3 className="mt-4 text-sm font-semibold text-gray-900 first:mt-0">
+                      {children}
+                    </h3>
+                  ),
+                  h3: ({ children }) => (
+                    <h3 className="mt-4 text-sm font-semibold text-gray-900 first:mt-0">
+                      {children}
+                    </h3>
+                  ),
+                  p: ({ children }) => (
+                    <p className="mt-2 text-sm leading-relaxed text-gray-700 first:mt-0">
+                      {children}
+                    </p>
+                  ),
+                  strong: ({ children }) => (
+                    <strong className="font-semibold text-gray-900">
+                      {children}
+                    </strong>
+                  ),
+                  ul: ({ children }) => (
+                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-700">
+                      {children}
+                    </ul>
+                  ),
+                  li: ({ children }) => <li>{children}</li>,
+                  hr: () => <hr className="my-4 border-gray-200" />,
+                }}
+              >
+                {briefing}
+              </ReactMarkdown>
+            </div>
           )}
         </section>
 

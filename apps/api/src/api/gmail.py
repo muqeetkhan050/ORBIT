@@ -1,5 +1,3 @@
-import json
-import os
 from urllib.parse import urlencode
 
 import httpx
@@ -11,14 +9,60 @@ from api.config import (
     GOOGLE_CLIENT_SECRET,
     GMAIL_REDIRECT_URI,
     GMAIL_SCOPES,
-    GMAIL_TOKENS_FILE,
 )
+from api.database import SessionLocal
+from api.models import Integration
 
 router = APIRouter()
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 FRONTEND_INBOX_URL = "http://localhost:3000/dashboard/inbox"
+PROVIDER = "gmail"
+USER_ID = "default_user"
+
+
+def save_tokens(tokens: dict):
+    db = SessionLocal()
+    integration = (
+        db.query(Integration)
+        .filter_by(user_id=USER_ID, provider=PROVIDER)
+        .first()
+    )
+
+    if integration:
+        integration.access_token = tokens["access_token"]
+        if "refresh_token" in tokens:
+            integration.refresh_token = tokens["refresh_token"]
+    else:
+        integration = Integration(
+            user_id=USER_ID,
+            provider=PROVIDER,
+            access_token=tokens["access_token"],
+            refresh_token=tokens.get("refresh_token"),
+        )
+        db.add(integration)
+
+    db.commit()
+    db.close()
+
+
+def load_tokens():
+    db = SessionLocal()
+    integration = (
+        db.query(Integration)
+        .filter_by(user_id=USER_ID, provider=PROVIDER)
+        .first()
+    )
+    db.close()
+
+    if not integration:
+        return None
+
+    return {
+        "access_token": integration.access_token,
+        "refresh_token": integration.refresh_token,
+    }
 
 
 @router.get("/connect")
@@ -50,21 +94,15 @@ def callback(code: str):
     response.raise_for_status()
     tokens = response.json()
 
-    with open(GMAIL_TOKENS_FILE, "w") as f:
-        json.dump(tokens, f)
+    save_tokens(tokens)
 
     return RedirectResponse(f"{FRONTEND_INBOX_URL}?connected=true")
 
 
 @router.get("/status")
 def status():
-    if not os.path.exists(GMAIL_TOKENS_FILE):
-        return {"connected": False}
-
-    with open(GMAIL_TOKENS_FILE) as f:
-        tokens = json.load(f)
-
-    return {"connected": "access_token" in tokens}
+    tokens = load_tokens()
+    return {"connected": tokens is not None}
 
 
 def refresh_access_token(tokens: dict) -> dict:
@@ -80,8 +118,7 @@ def refresh_access_token(tokens: dict) -> dict:
     response.raise_for_status()
     tokens.update(response.json())
 
-    with open(GMAIL_TOKENS_FILE, "w") as f:
-        json.dump(tokens, f)
+    save_tokens(tokens)
 
     return tokens
 
@@ -94,11 +131,9 @@ def extract_header(headers: list[dict], name: str) -> str:
 
 
 def fetch_gmail_messages():
-    if not os.path.exists(GMAIL_TOKENS_FILE):
+    tokens = load_tokens()
+    if tokens is None:
         raise HTTPException(status_code=401, detail="Not connected")
-
-    with open(GMAIL_TOKENS_FILE) as f:
-        tokens = json.load(f)
 
     def auth_headers(access_token: str):
         return {"Authorization": f"Bearer {access_token}"}
