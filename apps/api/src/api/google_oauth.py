@@ -182,3 +182,23 @@ def create_calendar_event(summary: str, start_datetime: str, end_datetime: str):
 
     response.raise_for_status()
     return response.json()
+
+def delete_calendar_event(event_id: str):
+    tokens = load_tokens()
+    if tokens is None:
+        raise HTTPException(status_code=401, detail="Not connected")
+
+    def delete(access_token: str):
+        return httpx.delete(
+            f"https://www.googleapis.com/calendar/v3/calendars/primary/events/{event_id}",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+    response = delete(tokens["access_token"])
+
+    if response.status_code == 401:
+        tokens = refresh_access_token(tokens)
+        response = delete(tokens["access_token"])
+
+    response.raise_for_status()
+    return {"deleted": event_id}

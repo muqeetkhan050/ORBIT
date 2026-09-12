@@ -50,12 +50,10 @@ export function ChatWidget() {
   }
 
   function confirmAction(index: number) {
-    const message = messages[index];
-
     fetch(`${API_URL}/api/v1/agent/confirm`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: message.action, params: message.params }),
+      body: JSON.stringify({ approved: true }),
     })
       .then((res) => res.json())
       .then((data) => {
@@ -67,9 +65,18 @@ export function ChatWidget() {
   }
 
   function cancelAction(index: number) {
-    setMessages((prev) =>
-      prev.map((m, i) => (i === index ? { ...m, cancelled: true } : m))
-    );
+    fetch(`${API_URL}/api/v1/agent/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ approved: false }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        setMessages((prev) => [
+          ...prev.map((m, i) => (i === index ? { ...m, cancelled: true } : m)),
+          { role: 'assistant', content: data.message },
+        ]);
+      });
   }
 
   return (

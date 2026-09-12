@@ -1,50 +1,42 @@
+from datetime import datetime
 
-
-from google import genai
 from fastapi import APIRouter
-from fastapi import HTTPException                              # ← ADD
-from datetime import datetime                                    # ← ADD
-from google.genai import types                                   # ← ADD
-from pydantic import BaseModel                                   # ← ADD
+from pydantic import BaseModel
+
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.prebuilt import create_react_agent
+from langgraph.types import Command
 
 from api.config import GEMINI_API_KEY
-from api.google_oauth import fetch_calendar_events, create_calendar_event   # ← MODIFY (add create_calendar_event)
+from api.google_oauth import fetch_calendar_events
 from api.gmail import fetch_gmail_messages
+from api.calendar_tools import create_calendar_event_tool, delete_calendar_event_tool
+from api.gmail_tools import search_emails_tool
 
 router = APIRouter()
 
-client = genai.Client(api_key=GEMINI_API_KEY)
+THREAD_ID = "default_thread"
 
-# ↓↓↓ ADD all of this new block here, between `client = ...` and `@router.get("/briefing")` ↓↓↓
+model = ChatGoogleGenerativeAI(model="gemini-3.6-flash", google_api_key=GEMINI_API_KEY)
 
-class ChatRequest(BaseModel):
-    message: str
+checkpointer = InMemorySaver()
 
-
-class ConfirmRequest(BaseModel):
-    action: str
-    params: dict
-
-
-create_event_tool = types.Tool(
-    function_declarations=[
-        types.FunctionDeclaration(
-            name="create_calendar_event",
-            description="Creates a new event on the user's Google Calendar.",
-            parameters=types.Schema(
-                type="OBJECT",
-                properties={
-                    "summary": types.Schema(type="STRING", description="Short title of the event"),
-                    "start_datetime": types.Schema(type="STRING", description="Start date and time in ISO 8601 format, e.g. 2026-09-13T09:00:00"),
-                    "end_datetime": types.Schema(type="STRING", description="End date and time in ISO 8601 format"),
-                },
-                required=["summary", "start_datetime", "end_datetime"],
-            ),
-        )
-    ]
+agent_graph = create_react_agent(
+    model,
+    tools=[create_calendar_event_tool, delete_calendar_event_tool, search_emails_tool],
+    checkpointer=checkpointer,
 )
 
 
+def extract_text(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "".join(
+            block.get("text", "") for block in content if isinstance(block, dict)
+        )
+    return str(content)
 
 
 @router.get("/briefing")
@@ -59,47 +51,61 @@ def get_briefing():
         "Summarize what needs my attention today in a short, clear briefing."
     )
 
-    response = client.models.generate_content(
-        model="gemini-3.6-flash",
-        contents=prompt,
-    )
+    response = model.invoke(prompt)
 
-    return {"briefing": response.text}
+    return {"briefing": extract_text(response.content)}
 
 
-# ↓↓↓ ADD both of these new routes here, AFTER get_briefing(), at the end of the file ↓↓↓
+class ChatRequest(BaseModel):
+    message: str
+
+
+class ConfirmRequest(BaseModel):
+    approved: bool
+
+
+def extract_result(result: dict) -> dict:
+    if "__interrupt__" in result:
+        payload = result["__interrupt__"][0].value
+        return {
+            "action": payload["action"],
+            "params": payload["params"],
+            "message": payload["message"],
+        }
+
+    final_message = result["messages"][-1].content
+    return {"action": None, "message": extract_text(final_message)}
+
 
 @router.post("/chat")
 def chat(request: ChatRequest):
     today = datetime.now().strftime("%A, %Y-%m-%d")
+    events = fetch_calendar_events()
+    config = {"configurable": {"thread_id": THREAD_ID}}
 
-    response = client.models.generate_content(
-        model="gemini-3.6-flash",
-        contents=f"Today is {today}. User request: {request.message}",
-        config=types.GenerateContentConfig(tools=[create_event_tool]),
+    context = (
+        f"Today is {today}.\n"
+        f"Here are the user's upcoming calendar events (with their ids):\n{events}\n\n"
+        f"User request: {request.message}"
     )
 
-    part = response.candidates[0].content.parts[0]
+    result = agent_graph.invoke(
+        {
+            "messages": [
+                {"role": "user", "content": context}
+            ]
+        },
+        config=config,
+    )
 
-    if part.function_call:
-        params = dict(part.function_call.args)
-        return {
-            "action": "create_calendar_event",
-            "params": params,
-            "message": f"I'll create \"{params['summary']}\" from {params['start_datetime']} to {params['end_datetime']}. Confirm?",
-        }
-
-    return {"action": None, "message": response.text}
+    return extract_result(result)
 
 
 @router.post("/confirm")
 def confirm(request: ConfirmRequest):
-    if request.action == "create_calendar_event":
-        create_calendar_event(
-            summary=request.params["summary"],
-            start_datetime=request.params["start_datetime"],
-            end_datetime=request.params["end_datetime"],
-        )
-        return {"message": f"Done — added \"{request.params['summary']}\" to your calendar."}
+    config = {"configurable": {"thread_id": THREAD_ID}}
+    decision = "approve" if request.approved else "reject"
 
-    raise HTTPException(status_code=400, detail="Unknown action")
+    result = agent_graph.invoke(Command(resume=decision), config=config)
+
+    return extract_result(result)
