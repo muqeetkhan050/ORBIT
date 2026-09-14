@@ -3,30 +3,15 @@ from datetime import datetime
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.prebuilt import create_react_agent
 from langgraph.types import Command
 
-from api.config import GEMINI_API_KEY
 from api.google_oauth import fetch_calendar_events
 from api.gmail import fetch_gmail_messages
-from api.calendar_tools import create_calendar_event_tool, delete_calendar_event_tool
-from api.gmail_tools import search_emails_tool
+from api.agent_graph import model, agent_graph
 
 router = APIRouter()
 
 THREAD_ID = "default_thread"
-
-model = ChatGoogleGenerativeAI(model="gemini-3.6-flash", google_api_key=GEMINI_API_KEY)
-
-checkpointer = InMemorySaver()
-
-agent_graph = create_react_agent(
-    model,
-    tools=[create_calendar_event_tool, delete_calendar_event_tool, search_emails_tool],
-    checkpointer=checkpointer,
-)
 
 
 def extract_text(content) -> str:
