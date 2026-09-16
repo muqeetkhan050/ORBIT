@@ -1,7 +1,16 @@
 from langchain_core.tools import tool
 from langgraph.types import interrupt
 
-from api.google_oauth import create_calendar_event, delete_calendar_event
+from api.google_oauth import create_calendar_event, delete_calendar_event, fetch_calendar_events
+
+
+@tool
+def list_calendar_events_tool() -> list:
+    """Returns the user's upcoming Google Calendar events, including each event's id.
+    Use this whenever you need to look up an event's id before deleting it, or to answer
+    questions about what's on the calendar.
+    """
+    return fetch_calendar_events()
 
 
 @tool

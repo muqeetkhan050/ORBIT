@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from fastapi import APIRouter
 from pydantic import BaseModel
 
@@ -7,7 +5,7 @@ from langgraph.types import Command
 
 from api.google_oauth import fetch_calendar_events
 from api.gmail import fetch_gmail_messages
-from api.agent_graph import model, agent_graph
+from api.supervisor_graph import model, supervisor_graph
 
 router = APIRouter()
 
@@ -64,20 +62,12 @@ def extract_result(result: dict) -> dict:
 
 @router.post("/chat")
 def chat(request: ChatRequest):
-    today = datetime.now().strftime("%A, %Y-%m-%d")
-    events = fetch_calendar_events()
     config = {"configurable": {"thread_id": THREAD_ID}}
 
-    context = (
-        f"Today is {today}.\n"
-        f"Here are the user's upcoming calendar events (with their ids):\n{events}\n\n"
-        f"User request: {request.message}"
-    )
-
-    result = agent_graph.invoke(
+    result = supervisor_graph.invoke(
         {
             "messages": [
-                {"role": "user", "content": context}
+                {"role": "user", "content": request.message}
             ]
         },
         config=config,
@@ -91,6 +81,6 @@ def confirm(request: ConfirmRequest):
     config = {"configurable": {"thread_id": THREAD_ID}}
     decision = "approve" if request.approved else "reject"
 
-    result = agent_graph.invoke(Command(resume=decision), config=config)
+    result = supervisor_graph.invoke(Command(resume=decision), config=config)
 
     return extract_result(result)
