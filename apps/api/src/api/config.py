@@ -31,3 +31,12 @@ GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 
 
 DATABASE_URL = os.environ["DATABASE_URL"]
+
+
+GMAIL_SCOPES = [
+    "openid",
+    "https://www.googleapis.com/auth/userinfo.email",
+    "https://www.googleapis.com/auth/userinfo.profile",
+    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.send",
+]

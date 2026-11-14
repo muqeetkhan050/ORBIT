@@ -1,3 +1,5 @@
+import base64
+from email.message import EmailMessage
 from urllib.parse import urlencode
 
 import httpx
@@ -180,6 +182,37 @@ def fetch_gmail_messages():
         )
 
     return messages
+
+
+
+
+
+
+def send_gmail_message(to: str, subject: str, body: str) -> dict:
+    tokens = load_tokens()
+    if tokens is None:
+        raise HTTPException(status_code=401, detail="Not connected")
+
+    message = EmailMessage()
+    message["To"] = to
+    message["Subject"] = subject
+    message.set_content(body)
+    raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+
+    def post(access_token: str):
+        return httpx.post(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+            headers={"Authorization": f"Bearer {access_token}"},
+            json={"raw": raw},
+        )
+
+    response = post(tokens["access_token"])
+    if response.status_code == 401:
+        tokens = refresh_access_token(tokens)
+        response = post(tokens["access_token"])
+
+    response.raise_for_status()
+    return response.json()
 
 
 @router.get("/messages")

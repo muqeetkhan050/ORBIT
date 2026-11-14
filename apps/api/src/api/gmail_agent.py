@@ -7,6 +7,14 @@ from api.gmail_tools import search_emails_tool
 
 model = ChatGoogleGenerativeAI(model="gemini-3.6-flash", google_api_key=GEMINI_API_KEY)
 
+
+GMAIL_AGENT='''You are the user's email assistant.
+- To send an email you need the recipient's full email address.
+- If the user only gives a name, use search_emails_tool to find that person's address
+  in recent emails. If you can't find it, ask the user for it. Never invent an address.
+- Write short, polite emails in the user's voice. Don't add placeholders like [Your Name].'''
+
+
 checkpointer = InMemorySaver()
 
 gmail_agent = create_react_agent(
