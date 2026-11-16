@@ -13,7 +13,11 @@ type ChatMessage = {
   params?: Record<string, any>;
   confirmed?: boolean;
   cancelled?: boolean;
+  pending?: boolean;
 };
+
+const NETWORK_ERROR =
+  "Couldn't reach the assistant. If you just confirmed an email, check your Sent folder before trying again.";
 
 export function ChatWidget() {
   const [open, setOpen] = useState(false);
@@ -46,35 +50,38 @@ export function ChatWidget() {
           },
         ]);
       })
+      .catch(() => {
+        setMessages((prev) => [...prev, { role: 'assistant', content: NETWORK_ERROR }]);
+      })
       .finally(() => setLoading(false));
   }
 
-  function confirmAction(index: number) {
+  function respondToAction(index: number, approved: boolean) {
+    // Hide the buttons immediately so the action can't be submitted twice
+    // while the request is in flight (it can take a while).
+    setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, pending: true } : m)));
+
     fetch(`${API_URL}/api/v1/agent/confirm`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ approved: true }),
+      body: JSON.stringify({ approved }),
     })
       .then((res) => res.json())
       .then((data) => {
         setMessages((prev) => [
-          ...prev.map((m, i) => (i === index ? { ...m, confirmed: true } : m)),
+          ...prev.map((m, i) =>
+            i === index
+              ? { ...m, pending: false, confirmed: approved, cancelled: !approved }
+              : m,
+          ),
           { role: 'assistant', content: data.message },
         ]);
-      });
-  }
-
-  function cancelAction(index: number) {
-    fetch(`${API_URL}/api/v1/agent/confirm`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ approved: false }),
-    })
-      .then((res) => res.json())
-      .then((data) => {
+      })
+      .catch(() => {
+        // Don't bring the buttons back: the action may already have happened.
         setMessages((prev) => [
-          ...prev.map((m, i) => (i === index ? { ...m, cancelled: true } : m)),
-          { role: 'assistant', content: data.message },
+          ...prev.map((m, i) => (i === index ? { ...m, pending: false, confirmed: approved, cancelled: !approved } : m)),
+          { role: 'assistant', content: NETWORK_ERROR },
         ]);
       });
   }
@@ -115,21 +122,29 @@ export function ChatWidget() {
                     message.content
                   )}
 
-                  {message.action && !message.confirmed && !message.cancelled && (
+                  {message.action && !message.confirmed && !message.cancelled && !message.pending && (
                     <div className="mt-2 flex gap-2">
                       <button
-                        onClick={() => confirmAction(index)}
+                        onClick={() => respondToAction(index, true)}
                         className="rounded-lg bg-black px-2.5 py-1 text-xs font-medium text-white hover:bg-gray-800"
                       >
                         Confirm
                       </button>
                       <button
-                        onClick={() => cancelAction(index)}
+                        onClick={() => respondToAction(index, false)}
                         className="rounded-lg border border-neutral-300 px-2.5 py-1 text-xs font-medium text-neutral-600 hover:bg-neutral-100"
                       >
                         Cancel
                       </button>
                     </div>
+                  )}
+
+                  {message.pending && (
+                    <p className="mt-1 text-xs italic text-neutral-400">Working on it…</p>
+                  )}
+
+                  {message.confirmed && (
+                    <p className="mt-1 text-xs italic text-neutral-400">Confirmed</p>
                   )}
 
                   {message.cancelled && (

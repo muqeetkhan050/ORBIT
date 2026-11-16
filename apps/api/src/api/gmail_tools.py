@@ -1,10 +1,15 @@
+import time
+
 from langchain_core.tools import tool
-
-from api.gmail import fetch_gmail_messages
-
 from langgraph.types import interrupt
 
 from api.gmail import fetch_gmail_messages, send_gmail_message
+
+# Emails sent recently: (to, subject, body) -> time sent.
+# If a run crashes after sending and gets retried, the same approved email would
+# be sent again. This guard makes sending idempotent for a short window.
+RECENTLY_SENT: dict[tuple[str, str, str], float] = {}
+DUPLICATE_WINDOW_SECONDS = 600
 
 
 @tool
@@ -13,10 +18,6 @@ def search_emails_tool() -> list:
     Use this whenever the user asks about their email or wants information found in their inbox.
     """
     return fetch_gmail_messages()
-
-
-
-# ... search_emails_tool stays the same ...
 
 
 @tool
@@ -36,6 +37,11 @@ def send_email_tool(to: str, subject: str, body: str) -> str:
     if decision != "approve":
         return "The user did not approve this email. Do not send it."
 
-    send_gmail_message(to=to, subject=subject, body=body)
-    return f"Sent the email to {to}."
+    key = (to, subject, body)
+    sent_at = RECENTLY_SENT.get(key)
+    if sent_at and time.time() - sent_at < DUPLICATE_WINDOW_SECONDS:
+        return f"This exact email to {to} was already sent a moment ago. Not sending a duplicate."
 
+    send_gmail_message(to=to, subject=subject, body=body)
+    RECENTLY_SENT[key] = time.time()
+    return f"Sent the email to {to}."
