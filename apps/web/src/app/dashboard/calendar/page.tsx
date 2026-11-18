@@ -2,6 +2,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { apiFetch } from '@/src/lib/api'
 
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
@@ -11,7 +12,7 @@ export default function CalendarPage() {
   const [connected, setConnected] = useState<boolean | null>(null)
 
   useEffect(() => {
-    fetch(`${API_URL}/api/v1/integrations/google/status`)
+    apiFetch(`/api/v1/integrations/google/status`)
       .then((res) => res.json())
       .then((data) => setConnected(data.connected))
       .catch(() => setConnected(false))
@@ -104,7 +105,7 @@ function ConnectedCalendar({ onDisconnect }: { onDisconnect: () => void }) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch(`${API_URL}/api/v1/integrations/google/events`)
+    apiFetch(`/api/v1/integrations/google/events`)
       .then((res) => {
         if (!res.ok) throw new Error('request failed')
         return res.json()

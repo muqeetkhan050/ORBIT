@@ -9,8 +9,8 @@ import {
 } from "lucide-react";
 import {useState} from 'react';
 import ReactMarkdown from 'react-markdown';
+import { apiFetch } from '@/src/lib/api';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 export default function DashboardPage() {
 
 
@@ -19,7 +19,7 @@ export default function DashboardPage() {
 
   function handlePrepare(){
     setLoading(true);
-    fetch(`${API_URL}/api/v1/agent/briefing`)
+    apiFetch(`/api/v1/agent/briefing`)
     .then ((res)=>res.json())
     .then((data)=>setBriefing(data.briefing))
     .finally(()=>setLoading(false));

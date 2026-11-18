@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { apiFetch } from '@/src/lib/api'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
@@ -8,7 +9,7 @@ export default function InboxPage() {
   const [connected, setConnected] = useState<boolean | null>(null)
 
   useEffect(() => {
-    fetch(`${API_URL}/api/v1/integrations/gmail/status`)
+    apiFetch(`/api/v1/integrations/gmail/status`)
       .then((res) => res.json())
       .then((data) => setConnected(data.connected))
       .catch(() => setConnected(false))
@@ -101,7 +102,7 @@ function ConnectedInbox({ onDisconnect }: { onDisconnect: () => void }) {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch(`${API_URL}/api/v1/integrations/gmail/messages`)
+    apiFetch(`/api/v1/integrations/gmail/messages`)
       .then((res) => {
         if (!res.ok) throw new Error('request failed')
         return res.json()

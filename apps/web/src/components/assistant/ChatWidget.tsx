@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { MessageCircle, X } from 'lucide-react';
+import { apiFetch } from '@/src/lib/api';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
 type ChatMessage = {
   role: 'user' | 'assistant';
@@ -33,7 +33,7 @@ export function ChatWidget() {
     setInput('');
     setLoading(true);
 
-    fetch(`${API_URL}/api/v1/agent/chat`, {
+    apiFetch(`/api/v1/agent/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: userMessage.content }),
@@ -61,7 +61,7 @@ export function ChatWidget() {
     // while the request is in flight (it can take a while).
     setMessages((prev) => prev.map((m, i) => (i === index ? { ...m, pending: true } : m)));
 
-    fetch(`${API_URL}/api/v1/agent/confirm`, {
+    apiFetch(`/api/v1/agent/confirm`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ approved }),

@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { createClient } from "@/src/lib/supabase/client";
 import {
   Home,
   Inbox,
@@ -16,6 +17,7 @@ import {
   Plug,
   Settings,
   Orbit,
+  LogOut,
 } from "lucide-react";
 
 const mainNavigation = [
@@ -38,6 +40,14 @@ const bottomNavigation = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+
+  async function handleLogout() {
+    const supabase = createClient();
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  }
 
   return (
     <aside className="flex h-screen w-64 flex-col border-r bg-white">
@@ -101,7 +111,7 @@ export function Sidebar() {
             M
           </div>
 
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">
               Muqeet
             </p>
@@ -109,6 +119,14 @@ export function Sidebar() {
               Personal workspace
             </p>
           </div>
+
+          <button
+            onClick={handleLogout}
+            title="Log out"
+            className="rounded-lg p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-900"
+          >
+            <LogOut size={18} />
+          </button>
         </div>
       </div>
     </aside>
