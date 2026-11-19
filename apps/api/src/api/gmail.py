@@ -3,7 +3,7 @@ from email.message import EmailMessage
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 
 from api.config import (
@@ -14,6 +14,7 @@ from api.config import (
 )
 from api.database import SessionLocal
 from api.models import Integration
+from api.auth import create_oauth_state, get_current_user_id, read_oauth_state
 
 router = APIRouter()
 
@@ -21,14 +22,14 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 FRONTEND_INBOX_URL = "http://localhost:3000/dashboard/inbox"
 PROVIDER = "gmail"
-USER_ID = "default_user"
 
 
-def save_tokens(tokens: dict):
+
+def save_tokens(user_id: str, tokens: dict):
     db = SessionLocal()
     integration = (
         db.query(Integration)
-        .filter_by(user_id=USER_ID, provider=PROVIDER)
+        .filter_by(user_id=user_id, provider=PROVIDER)
         .first()
     )
 
@@ -38,7 +39,7 @@ def save_tokens(tokens: dict):
             integration.refresh_token = tokens["refresh_token"]
     else:
         integration = Integration(
-            user_id=USER_ID,
+            user_id=user_id,
             provider=PROVIDER,
             access_token=tokens["access_token"],
             refresh_token=tokens.get("refresh_token"),
@@ -49,11 +50,11 @@ def save_tokens(tokens: dict):
     db.close()
 
 
-def load_tokens():
+def load_tokens(user_id: str):
     db = SessionLocal()
     integration = (
         db.query(Integration)
-        .filter_by(user_id=USER_ID, provider=PROVIDER)
+        .filter_by(user_id=user_id, provider=PROVIDER)
         .first()
     )
     db.close()
@@ -68,7 +69,9 @@ def load_tokens():
 
 
 @router.get("/connect")
-def connect():
+def connect(user_id: str = Depends(get_current_user_id)):
+    # Called by the frontend with apiFetch (so we know who is logged in).
+    # Returns the Google URL instead of redirecting; the browser then goes there.
     params = {
         "client_id": GOOGLE_CLIENT_ID,
         "redirect_uri": GMAIL_REDIRECT_URI,
@@ -76,13 +79,17 @@ def connect():
         "scope": " ".join(GMAIL_SCOPES),
         "access_type": "offline",
         "prompt": "consent",
+        # Google sends this back unchanged to /callback, so we know whose tokens they are.
+        "state": create_oauth_state(user_id, PROVIDER),
     }
-    url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
-    return RedirectResponse(url)
+    return {"url": f"{GOOGLE_AUTH_URL}?{urlencode(params)}"}
 
 
 @router.get("/callback")
-def callback(code: str):
+def callback(code: str, state: str):
+    # Check the state BEFORE using the code, so a forged request is rejected early.
+    user_id = read_oauth_state(state, PROVIDER)
+
     response = httpx.post(
         GOOGLE_TOKEN_URL,
         data={
@@ -96,18 +103,18 @@ def callback(code: str):
     response.raise_for_status()
     tokens = response.json()
 
-    save_tokens(tokens)
+    save_tokens(user_id, tokens)
 
     return RedirectResponse(f"{FRONTEND_INBOX_URL}?connected=true")
 
 
 @router.get("/status")
-def status():
-    tokens = load_tokens()
+def status(user_id: str = Depends(get_current_user_id)):
+    tokens = load_tokens(user_id)
     return {"connected": tokens is not None}
 
 
-def refresh_access_token(tokens: dict) -> dict:
+def refresh_access_token(user_id: str, tokens: dict) -> dict:
     response = httpx.post(
         GOOGLE_TOKEN_URL,
         data={
@@ -120,7 +127,7 @@ def refresh_access_token(tokens: dict) -> dict:
     response.raise_for_status()
     tokens.update(response.json())
 
-    save_tokens(tokens)
+    save_tokens(user_id, tokens)
 
     return tokens
 
@@ -132,8 +139,8 @@ def extract_header(headers: list[dict], name: str) -> str:
     return ""
 
 
-def fetch_gmail_messages():
-    tokens = load_tokens()
+def fetch_gmail_messages(user_id: str):
+    tokens = load_tokens(user_id)
     if tokens is None:
         raise HTTPException(status_code=401, detail="Not connected")
 
@@ -147,7 +154,7 @@ def fetch_gmail_messages():
     )
 
     if list_response.status_code == 401:
-        tokens = refresh_access_token(tokens)
+        tokens = refresh_access_token(user_id, tokens)
         list_response = httpx.get(
             "https://gmail.googleapis.com/gmail/v1/users/me/messages",
             headers=auth_headers(tokens["access_token"]),
@@ -188,8 +195,8 @@ def fetch_gmail_messages():
 
 
 
-def send_gmail_message(to: str, subject: str, body: str) -> dict:
-    tokens = load_tokens()
+def send_gmail_message(user_id: str, to: str, subject: str, body: str) -> dict:
+    tokens = load_tokens(user_id)
     if tokens is None:
         raise HTTPException(status_code=401, detail="Not connected")
 
@@ -208,7 +215,7 @@ def send_gmail_message(to: str, subject: str, body: str) -> dict:
 
     response = post(tokens["access_token"])
     if response.status_code == 401:
-        tokens = refresh_access_token(tokens)
+        tokens = refresh_access_token(user_id, tokens)
         response = post(tokens["access_token"])
 
     response.raise_for_status()
@@ -216,5 +223,5 @@ def send_gmail_message(to: str, subject: str, body: str) -> dict:
 
 
 @router.get("/messages")
-def get_messages():
-    return fetch_gmail_messages()
+def get_messages(user_id: str = Depends(get_current_user_id)):
+    return fetch_gmail_messages(user_id)

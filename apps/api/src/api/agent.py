@@ -1,4 +1,4 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
 from langgraph.types import Command
@@ -8,11 +8,16 @@ from api.gmail import fetch_gmail_messages
 from api.supervisor_graph import model, supervisor_graph
 from api.gmail_agent import gmail_agent
 from api.calendar_agent import calendar_agent
-from api.supervisor_tools import GMAIL_THREAD_ID, CALENDAR_THREAD_ID
+from api.supervisor_tools import calendar_thread_id, gmail_thread_id
+from api.auth import get_current_user_id
 
 router = APIRouter()
 
-THREAD_ID = "default_thread"
+
+
+def supervisor_config(user_id: str) -> dict:
+    # One conversation per user, and user_id travels with it so tools can read it.
+    return {"configurable": {"thread_id": f"supervisor:{user_id}", "user_id": user_id}}
 
 
 def extract_text(content) -> str:
@@ -26,9 +31,9 @@ def extract_text(content) -> str:
 
 
 @router.get("/briefing")
-def get_briefing():
-    events = fetch_calendar_events()
-    messages = fetch_gmail_messages()
+def get_briefing(user_id: str = Depends(get_current_user_id)):
+    events = fetch_calendar_events()  # TODO 10e: pass user_id
+    messages = fetch_gmail_messages(user_id)
 
     prompt = (
         "Here are my upcoming calendar events and recent emails.\n\n"
@@ -63,20 +68,20 @@ def extract_result(result: dict) -> dict:
     return {"action": None, "message": extract_text(final_message)}
 
 
-def reset_conversation():
+def reset_conversation(user_id: str):
     """Wipe the saved state of the supervisor and both sub-agents.
 
     Used after a crash. A run that fails partway (e.g. Gemini 429 right after an
     email was sent) leaves the graphs looking "paused". If we kept that state,
     the next Confirm click would replay the run and send the email again.
     """
-    supervisor_graph.checkpointer.delete_thread(THREAD_ID)
-    gmail_agent.checkpointer.delete_thread(GMAIL_THREAD_ID)
-    calendar_agent.checkpointer.delete_thread(CALENDAR_THREAD_ID)
+    supervisor_graph.checkpointer.delete_thread(f"supervisor:{user_id}")
+    gmail_agent.checkpointer.delete_thread(gmail_thread_id(user_id))
+    calendar_agent.checkpointer.delete_thread(calendar_thread_id(user_id))
 
 
-def error_response(error: Exception) -> dict:
-    reset_conversation()
+def error_response(error: Exception, user_id: str) -> dict:
+    reset_conversation(user_id)
     if "RESOURCE_EXHAUSTED" in str(error) or "429" in str(error):
         reason = "the Gemini API quota is used up for now"
     else:
@@ -97,8 +102,8 @@ def has_pending_approval(config: dict) -> bool:
 
 
 @router.post("/chat")
-def chat(request: ChatRequest):
-    config = {"configurable": {"thread_id": THREAD_ID}}
+def chat(request: ChatRequest, user_id: str = Depends(get_current_user_id)):
+    config = supervisor_config(user_id)
 
     try:
         # If an action is still waiting for Confirm/Cancel, the paused tool call has
@@ -117,12 +122,12 @@ def chat(request: ChatRequest):
         )
         return extract_result(result)
     except Exception as error:
-        return error_response(error)
+        return error_response(error, user_id)
 
 
 @router.post("/confirm")
-def confirm(request: ConfirmRequest):
-    config = {"configurable": {"thread_id": THREAD_ID}}
+def confirm(request: ConfirmRequest, user_id: str = Depends(get_current_user_id)):
+    config = supervisor_config(user_id)
     decision = "approve" if request.approved else "reject"
 
     # Nothing waiting for approval (e.g. a double click, or state was reset):
@@ -134,4 +139,4 @@ def confirm(request: ConfirmRequest):
         result = supervisor_graph.invoke(Command(resume=decision), config=config)
         return extract_result(result)
     except Exception as error:
-        return error_response(error)
+        return error_response(error, user_id)

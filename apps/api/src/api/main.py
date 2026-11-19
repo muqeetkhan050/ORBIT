@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from api.auth import get_current_user_id
 from api.gmail import router as gmail_router
 
 from api.google_oauth import router as google_oauth_router
@@ -24,6 +25,12 @@ app.include_router(
 @app.get("/")
 def health_check():
     return {"status": "ok"}
+
+
+@app.get("/api/v1/me")
+def me(user_id: str = Depends(get_current_user_id)):
+    """Returns the logged-in user's id. Used to check that login tokens work."""
+    return {"user_id": user_id}
 
 
 app.include_router(

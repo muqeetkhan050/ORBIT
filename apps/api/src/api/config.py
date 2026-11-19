@@ -32,6 +32,11 @@ GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+
+# Secret used to sign the OAuth "state" parameter (see auth.py).
+OAUTH_STATE_SECRET = os.environ["OAUTH_STATE_SECRET"]
+
 
 GMAIL_SCOPES = [
     "openid",

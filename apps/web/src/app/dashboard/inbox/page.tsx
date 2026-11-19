@@ -3,8 +3,6 @@
 import { useEffect, useState } from 'react'
 import { apiFetch } from '@/src/lib/api'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
-
 export default function InboxPage() {
   const [connected, setConnected] = useState<boolean | null>(null)
 
@@ -16,7 +14,13 @@ export default function InboxPage() {
   }, [])
 
   function handleConnect() {
-    window.location.href = `${API_URL}/api/v1/integrations/gmail/connect`
+    // Ask the API (with our login token) for a Google URL that carries a signed "state",
+    // then send the browser there.
+    apiFetch(`/api/v1/integrations/gmail/connect`)
+      .then((res) => res.json())
+      .then((data) => {
+        window.location.href = data.url
+      })
   }
 
   return (

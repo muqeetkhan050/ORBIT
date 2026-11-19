@@ -12,7 +12,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      {/* suppressHydrationWarning: browser extensions (e.g. Grammarly) add attributes to <body>
+          before React loads, which would otherwise log a harmless mismatch warning. */}
+      <body suppressHydrationWarning>{children}</body>
     </html>
   );
 }
