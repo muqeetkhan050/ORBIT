@@ -1,3 +1,4 @@
+from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.types import interrupt
 
@@ -5,16 +6,19 @@ from api.google_oauth import create_calendar_event, delete_calendar_event, fetch
 
 
 @tool
-def list_calendar_events_tool() -> list:
+def list_calendar_events_tool(config: RunnableConfig) -> list:
     """Returns the user's upcoming Google Calendar events, including each event's id.
     Use this whenever you need to look up an event's id before deleting it, or to answer
     questions about what's on the calendar.
     """
-    return fetch_calendar_events()
+    # user_id comes from LangGraph's config (set in agent.py from the login token).
+    return fetch_calendar_events(config["configurable"]["user_id"])
 
 
 @tool
-def create_calendar_event_tool(summary: str, start_datetime: str, end_datetime: str) -> str:
+def create_calendar_event_tool(
+    summary: str, start_datetime: str, end_datetime: str, config: RunnableConfig
+) -> str:
     """Creates a new event on the user's Google Calendar.
     start_datetime and end_datetime must be ISO 8601 format, e.g. 2026-09-13T09:00:00.
     """
@@ -34,13 +38,14 @@ def create_calendar_event_tool(summary: str, start_datetime: str, end_datetime: 
         return "The user did not approve this action. Do not create the event."
 
     create_calendar_event(
+        config["configurable"]["user_id"],
         summary=summary, start_datetime=start_datetime, end_datetime=end_datetime
     )
     return f"Created the event '{summary}'."
 
 
 @tool
-def delete_calendar_event_tool(event_id: str) -> str:
+def delete_calendar_event_tool(event_id: str, config: RunnableConfig) -> str:
     """Deletes or cancels an existing event on the user's Google Calendar, given its event id."""
     decision = interrupt(
         {
@@ -53,5 +58,5 @@ def delete_calendar_event_tool(event_id: str) -> str:
     if decision != "approve":
         return "The user did not approve this action. Do not delete the event."
 
-    delete_calendar_event(event_id=event_id)
+    delete_calendar_event(config["configurable"]["user_id"], event_id=event_id)
     return "Deleted the event."

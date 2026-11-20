@@ -2,7 +2,7 @@ from urllib.parse import urlencode
 from datetime import datetime, timezone
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import RedirectResponse
 
 from api.config import (
@@ -13,6 +13,7 @@ from api.config import (
 )
 from api.database import SessionLocal
 from api.models import Integration
+from api.auth import create_oauth_state, get_current_user_id, read_oauth_state
 
 router = APIRouter()
 
@@ -20,14 +21,13 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 FRONTEND_CALENDAR_URL = "http://localhost:3000/dashboard/calendar"
 PROVIDER = "google_calendar"
-USER_ID = "default_user"
 
 
-def save_tokens(tokens: dict):
+def save_tokens(user_id: str, tokens: dict):
     db = SessionLocal()
     integration = (
         db.query(Integration)
-        .filter_by(user_id=USER_ID, provider=PROVIDER)
+        .filter_by(user_id=user_id, provider=PROVIDER)
         .first()
     )
 
@@ -37,7 +37,7 @@ def save_tokens(tokens: dict):
             integration.refresh_token = tokens["refresh_token"]
     else:
         integration = Integration(
-            user_id=USER_ID,
+            user_id=user_id,
             provider=PROVIDER,
             access_token=tokens["access_token"],
             refresh_token=tokens.get("refresh_token"),
@@ -48,11 +48,11 @@ def save_tokens(tokens: dict):
     db.close()
 
 
-def load_tokens():
+def load_tokens(user_id: str):
     db = SessionLocal()
     integration = (
         db.query(Integration)
-        .filter_by(user_id=USER_ID, provider=PROVIDER)
+        .filter_by(user_id=user_id, provider=PROVIDER)
         .first()
     )
     db.close()
@@ -67,7 +67,9 @@ def load_tokens():
 
 
 @router.get("/connect")
-def connect():
+def connect(user_id: str = Depends(get_current_user_id)):
+    # Called with apiFetch (login token attached). Returns the Google URL;
+    # the signed "state" tells /callback which user this connection belongs to.
     params = {
         "client_id": GOOGLE_CLIENT_ID,
         "redirect_uri": GOOGLE_REDIRECT_URI,
@@ -75,13 +77,14 @@ def connect():
         "scope": " ".join(GOOGLE_SCOPES),
         "access_type": "offline",
         "prompt": "consent",
+        "state": create_oauth_state(user_id, PROVIDER),
     }
-    url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
-    return RedirectResponse(url)
+    return {"url": f"{GOOGLE_AUTH_URL}?{urlencode(params)}"}
 
 
 @router.get("/callback")
-def callback(code: str):
+def callback(code: str, state: str):
+    user_id = read_oauth_state(state, PROVIDER)
     response = httpx.post(
         GOOGLE_TOKEN_URL,
         data={
@@ -95,18 +98,18 @@ def callback(code: str):
     response.raise_for_status()
     tokens = response.json()
 
-    save_tokens(tokens)
+    save_tokens(user_id, tokens)
 
     return RedirectResponse(f"{FRONTEND_CALENDAR_URL}?connected=true")
 
 
 @router.get("/status")
-def status():
-    tokens = load_tokens()
+def status(user_id: str = Depends(get_current_user_id)):
+    tokens = load_tokens(user_id)
     return {"connected": tokens is not None}
 
 
-def refresh_access_token(tokens: dict) -> dict:
+def refresh_access_token(user_id: str, tokens: dict) -> dict:
     response = httpx.post(
         GOOGLE_TOKEN_URL,
         data={
@@ -119,13 +122,13 @@ def refresh_access_token(tokens: dict) -> dict:
     response.raise_for_status()
     tokens.update(response.json())
 
-    save_tokens(tokens)
+    save_tokens(user_id, tokens)
 
     return tokens
 
 
-def fetch_calendar_events():
-    tokens = load_tokens()
+def fetch_calendar_events(user_id: str):
+    tokens = load_tokens(user_id)
     if tokens is None:
         raise HTTPException(status_code=401, detail="Not connected")
 
@@ -144,7 +147,7 @@ def fetch_calendar_events():
     response = fetch(tokens["access_token"])
 
     if response.status_code == 401:
-        tokens = refresh_access_token(tokens)
+        tokens = refresh_access_token(user_id, tokens)
         response = fetch(tokens["access_token"])
 
     response.raise_for_status()
@@ -152,12 +155,12 @@ def fetch_calendar_events():
 
 
 @router.get("/events")
-def get_events():
-    return fetch_calendar_events()
+def get_events(user_id: str = Depends(get_current_user_id)):
+    return fetch_calendar_events(user_id)
 
 
-def create_calendar_event(summary: str, start_datetime: str, end_datetime: str):
-    tokens = load_tokens()
+def create_calendar_event(user_id: str, summary: str, start_datetime: str, end_datetime: str):
+    tokens = load_tokens(user_id)
     if tokens is None:
         raise HTTPException(status_code=401, detail="Not connected")
 
@@ -177,14 +180,14 @@ def create_calendar_event(summary: str, start_datetime: str, end_datetime: str):
     response = post(tokens["access_token"])
 
     if response.status_code == 401:
-        tokens = refresh_access_token(tokens)
+        tokens = refresh_access_token(user_id, tokens)
         response = post(tokens["access_token"])
 
     response.raise_for_status()
     return response.json()
 
-def delete_calendar_event(event_id: str):
-    tokens = load_tokens()
+def delete_calendar_event(user_id: str, event_id: str):
+    tokens = load_tokens(user_id)
     if tokens is None:
         raise HTTPException(status_code=401, detail="Not connected")
 
@@ -197,7 +200,7 @@ def delete_calendar_event(event_id: str):
     response = delete(tokens["access_token"])
 
     if response.status_code == 401:
-        tokens = refresh_access_token(tokens)
+        tokens = refresh_access_token(user_id, tokens)
         response = delete(tokens["access_token"])
 
     response.raise_for_status()

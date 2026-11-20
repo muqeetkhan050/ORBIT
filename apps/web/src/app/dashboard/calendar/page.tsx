@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react'
 import { apiFetch } from '@/src/lib/api'
 
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 
 export default function CalendarPage() {
 
@@ -20,7 +19,13 @@ export default function CalendarPage() {
 
   function handleConnect() {
 
-    window.location.href = `${API_URL}/api/v1/integrations/google/connect`
+    // Ask the API (with our login token) for a Google URL carrying a signed "state",
+    // then send the browser there.
+    apiFetch(`/api/v1/integrations/google/connect`)
+      .then((res) => res.json())
+      .then((data) => {
+        window.location.href = data.url
+      })
   }
 
   return (

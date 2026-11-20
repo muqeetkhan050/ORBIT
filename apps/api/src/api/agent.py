@@ -32,7 +32,7 @@ def extract_text(content) -> str:
 
 @router.get("/briefing")
 def get_briefing(user_id: str = Depends(get_current_user_id)):
-    events = fetch_calendar_events()  # TODO 10e: pass user_id
+    events = fetch_calendar_events(user_id)
     messages = fetch_gmail_messages(user_id)
 
     prompt = (
