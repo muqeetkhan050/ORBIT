@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
@@ -38,9 +39,24 @@ const bottomNavigation = [
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
 
+type SidebarUser = { name: string; email: string };
+
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const [user, setUser] = useState<SidebarUser | null>(null);
+
+  // Load the logged-in user from Supabase once, when the sidebar first appears.
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      const email = data.user?.email ?? "";
+      // No name is collected at sign-up yet, so use a full_name if one exists,
+      // otherwise the part of the email before "@".
+      const name = data.user?.user_metadata?.full_name ?? email.split("@")[0];
+      setUser({ name, email });
+    });
+  }, []);
 
   async function handleLogout() {
     const supabase = createClient();
@@ -107,16 +123,16 @@ export function Sidebar() {
 
       <div className="border-t p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-200 text-sm font-medium">
-            M
+          <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-200 text-sm font-medium uppercase">
+            {user?.name.charAt(0) ?? ""}
           </div>
 
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">
-              Muqeet
+              {user ? user.name : "Loading…"}
             </p>
             <p className="truncate text-xs text-gray-500">
-              Personal workspace
+              {user?.email}
             </p>
           </div>
 

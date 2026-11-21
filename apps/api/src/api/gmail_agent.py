@@ -1,5 +1,5 @@
 from api.llm import model
-from langgraph.checkpoint.memory import InMemorySaver
+from api.memory import checkpointer
 from langgraph.prebuilt import create_react_agent
 
 from api.gmail_tools import search_emails_tool, send_email_tool
@@ -15,7 +15,6 @@ GMAIL_AGENT = '''You are the user's email assistant.
   in text: the tool itself shows the user the draft with a Confirm button before sending.'''
 
 
-checkpointer = InMemorySaver()
 
 gmail_agent = create_react_agent(
     model,

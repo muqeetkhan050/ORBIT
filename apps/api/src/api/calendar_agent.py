@@ -1,5 +1,5 @@
 from api.llm import model
-from langgraph.checkpoint.memory import InMemorySaver
+from api.memory import checkpointer
 from langgraph.prebuilt import create_react_agent
 
 from api.calendar_tools import (
@@ -8,8 +8,6 @@ from api.calendar_tools import (
     delete_calendar_event_tool,
 )
 
-
-checkpointer = InMemorySaver()
 
 calendar_agent = create_react_agent(
     model,
