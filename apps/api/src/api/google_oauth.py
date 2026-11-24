@@ -1,5 +1,6 @@
 from urllib.parse import urlencode
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException
@@ -10,6 +11,7 @@ from api.config import (
     GOOGLE_CLIENT_SECRET,
     GOOGLE_REDIRECT_URI,
     GOOGLE_SCOPES,
+    USER_TIMEZONE,
 )
 from api.database import SessionLocal
 from api.models import Integration
@@ -127,21 +129,31 @@ def refresh_access_token(user_id: str, tokens: dict) -> dict:
     return tokens
 
 
-def fetch_calendar_events(user_id: str):
+def fetch_calendar_events(
+    user_id: str,
+    time_min: datetime | None = None,
+    time_max: datetime | None = None,
+    max_results: int = 10,
+):
     tokens = load_tokens(user_id)
     if tokens is None:
         raise HTTPException(status_code=401, detail="Not connected")
+
+    # Defaults keep the old behaviour (next 10 events from now) for existing callers.
+    params = {
+        "maxResults": max_results,
+        "orderBy": "startTime",
+        "singleEvents": "true",  # expand repeating events into single occurrences
+        "timeMin": (time_min or datetime.now(timezone.utc)).isoformat(),
+    }
+    if time_max:
+        params["timeMax"] = time_max.isoformat()
 
     def fetch(access_token: str):
         return httpx.get(
             "https://www.googleapis.com/calendar/v3/calendars/primary/events",
             headers={"Authorization": f"Bearer {access_token}"},
-            params={
-                "maxResults": 10,
-                "orderBy": "startTime",
-                "singleEvents": "true",
-                "timeMin": datetime.now(timezone.utc).isoformat(),
-            },
+            params=params,
         )
 
     response = fetch(tokens["access_token"])
@@ -152,6 +164,16 @@ def fetch_calendar_events(user_id: str):
 
     response.raise_for_status()
     return response.json().get("items", [])
+
+
+def fetch_today_events(user_id: str) -> list[dict]:
+    """All of today's events (midnight to midnight) in the user's time zone."""
+    tz = ZoneInfo(USER_TIMEZONE)
+    start_of_day = datetime.now(tz).replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_day = start_of_day + timedelta(days=1)
+    return fetch_calendar_events(
+        user_id, time_min=start_of_day, time_max=end_of_day, max_results=50
+    )
 
 
 @router.get("/events")
@@ -166,8 +188,8 @@ def create_calendar_event(user_id: str, summary: str, start_datetime: str, end_d
 
     body = {
         "summary": summary,
-        "start": {"dateTime": start_datetime, "timeZone": "Australia/Brisbane"},
-        "end": {"dateTime": end_datetime, "timeZone": "Australia/Brisbane"},
+        "start": {"dateTime": start_datetime, "timeZone": USER_TIMEZONE},
+        "end": {"dateTime": end_datetime, "timeZone": USER_TIMEZONE},
     }
 
     def post(access_token: str):

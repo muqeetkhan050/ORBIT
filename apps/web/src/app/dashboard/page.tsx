@@ -1,231 +1,326 @@
 'use client';
 
 import {
+  AlertTriangle,
   CalendarDays,
   CheckCircle2,
-  Clock3,
-  ArrowUpRight,
+  ClipboardList,
+  ExternalLink,
+  RefreshCw,
   Sparkles,
-} from "lucide-react";
-import {useState} from 'react';
-import ReactMarkdown from 'react-markdown';
+} from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { apiFetch } from '@/src/lib/api';
+import { createClient } from '@/src/lib/supabase/client';
+
+// ---------------------------------------------------------------------------
+// The shape of GET /api/v1/today. It mirrors the Pydantic models in today.py,
+// so TypeScript warns us if we use a field the backend doesn't send.
+// ---------------------------------------------------------------------------
+type Urgency = 'high' | 'medium' | 'low';
+
+type Priority = {
+  title: string;
+  why: string;
+  action: string;
+  urgency: Urgency;
+  email_id: string;
+};
+
+type MeetingPrep = {
+  title: string;
+  when: string | null;
+  context: string;
+  checklist: string[];
+  email_id: string | null;
+};
+
+type TodayData = {
+  generated_at: string;
+  date: string;
+  connected: { gmail: boolean; calendar: boolean };
+  meeting_count: number;
+  schedule: { time: string; title: string }[];
+  ai_error: string | null; // set when Gemini failed; the rest of the data is still valid
+  summary: string;
+  priorities: Priority[];
+  prep: MeetingPrep[];
+};
+
+const URGENCY_STYLE: Record<Urgency, string> = {
+  high: 'bg-red-50 text-red-700 ring-red-200',
+  medium: 'bg-amber-50 text-amber-700 ring-amber-200',
+  low: 'bg-gray-100 text-gray-600 ring-gray-200',
+};
+
+// Opens the original email in Gmail.
+function gmailLink(emailId: string) {
+  return `https://mail.google.com/mail/u/0/#all/${emailId}`;
+}
+
+function greeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 18) return 'Good afternoon';
+  return 'Good evening';
+}
+
+function minutesAgo(iso: string) {
+  const minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+  return minutes < 1 ? 'just now' : `${minutes} min ago`;
+}
 
 export default function DashboardPage() {
+  const [data, setData] = useState<TodayData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [name, setName] = useState('');
 
-
-  const [briefing, setBriefing] = useState<string | null>(null);
-  const [loading, setLoading] = useState<boolean>(false);
-
-  function handlePrepare(){
-    setLoading(true);
-    apiFetch(`/api/v1/agent/briefing`)
-    .then ((res)=>res.json())
-    .then((data)=>setBriefing(data.briefing))
-    .finally(()=>setLoading(false));
+  // Fetches the data. State is only set inside the callbacks (after the response),
+  // so it's safe to call from useEffect. refresh=true skips the 30-minute cache.
+  function fetchToday(refresh = false) {
+    apiFetch(`/api/v1/today${refresh ? '?refresh=true' : ''}`)
+      .then(async (res) => {
+        const body = await res.json();
+        // fetch() only rejects on network failure; a 503 still "succeeds",
+        // so check res.ok and show the backend's message.
+        if (!res.ok) throw new Error(body.detail ?? 'Something went wrong');
+        setData(body);
+      })
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false));
   }
+
+  // For buttons: show the spinner, clear old errors, then fetch.
+  function reload(refresh: boolean) {
+    setLoading(true);
+    setError(null);
+    fetchToday(refresh);
+  }
+
+  // Runs once when the page opens. `loading` already starts as true.
+  useEffect(() => {
+    fetchToday();
+    createClient()
+      .auth.getUser()
+      .then(({ data }) => {
+        const email = data.user?.email ?? '';
+        setName(data.user?.user_metadata?.full_name ?? email.split('@')[0]);
+      });
+  }, []);
+
+  const highCount = data?.priorities.filter((p) => p.urgency === 'high').length ?? 0;
+
   return (
     <div className="min-h-screen">
       <header className="border-b bg-white px-8 py-5">
-        <div className="mx-auto max-w-7xl">
-          <p className="text-sm text-gray-500">
-            Tuesday, September 8, 2026
-          </p>
+        <div className="mx-auto flex max-w-7xl items-end justify-between gap-4">
+          <div>
+            <p className="text-sm text-gray-500">{data?.date ?? ' '}</p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-tight">
+              {greeting()}
+              {name && `, ${name}`}
+            </h1>
+            <p className="mt-1 text-sm text-gray-500">Here&apos;s what matters today.</p>
+          </div>
 
-          <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-            Good morning, Muqeet 👋
-          </h1>
-
-          <p className="mt-1 text-sm text-gray-500">
-            Here's what matters today.
-          </p>
+          <div className="flex items-center gap-3">
+            {data && !loading && (
+              <span className="text-xs text-gray-400">Updated {minutesAgo(data.generated_at)}</span>
+            )}
+            <button
+              onClick={() => reload(true)}
+              disabled={loading}
+              className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+            >
+              <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
+              {loading ? 'Updating…' : 'Refresh'}
+            </button>
+          </div>
         </div>
       </header>
 
       <div className="mx-auto max-w-7xl space-y-6 p-8">
-
-        {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <StatCard
-            icon={<CalendarDays size={18} />}
-            label="Meetings"
-            value="4"
-            description="Today"
-          />
-
-          <StatCard
-            icon={<Clock3 size={18} />}
-            label="Focus time"
-            value="2h 40m"
-            description="Available today"
-          />
-
-          <StatCard
-            icon={<CheckCircle2 size={18} />}
-            label="Priorities"
-            value="3"
-            description="Need your attention"
-          />
-        </div>
-
-        {/* AI recommendation */}
-        <section className="rounded-2xl border bg-white p-6 shadow-sm">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <Sparkles size={17} />
-            NEXT BEST ACTION
-          </div>
-
-          <div className="mt-5 flex flex-col justify-between gap-5 md:flex-row md:items-end">
-            <div>
-              <h2 className="text-xl font-semibold">
-                Prepare for your 2 PM meeting
-              </h2>
-
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-gray-500">
-                ORBIT will search your calendar, emails, Slack
-                conversations, and previous interactions to build
-                a meeting briefing.
-              </p>
-
-              <div className="mt-4 flex gap-2">
-                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs">
-                  Calendar
-                </span>
-
-                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs">
-                  Gmail
-                </span>
-
-                <span className="rounded-full bg-gray-100 px-3 py-1 text-xs">
-                  Slack
-                </span>
-              </div>
-            </div>
-
-            <button
-              onClick={handlePrepare}
-              disabled={loading}
-              className="flex shrink-0 items-center justify-center gap-2 rounded-lg bg-black px-4 py-2.5 text-sm font-medium text-white transition hover:bg-gray-800 disabled:opacity-50"
-            >
-              {loading ? "Preparing…" : "Prepare me"}
-              <ArrowUpRight size={16} />
+        {error && (
+          <div className="flex items-center justify-between rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {error}
+            <button onClick={() => reload(false)} className="font-medium underline">
+              Try again
             </button>
           </div>
+        )}
 
-          {briefing && (
-            <div className="mt-5 rounded-xl border border-gray-100 bg-gray-50 p-5">
-              <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-gray-400">
-                <Sparkles size={14} />
-                Your briefing
-              </div>
+        {loading && !data && <LoadingState />}
 
-              <ReactMarkdown
-                components={{
-                  h1: ({ children }) => (
-                    <h3 className="mt-4 text-sm font-semibold text-gray-900 first:mt-0">
-                      {children}
-                    </h3>
-                  ),
-                  h2: ({ children }) => (
-                    <h3 className="mt-4 text-sm font-semibold text-gray-900 first:mt-0">
-                      {children}
-                    </h3>
-                  ),
-                  h3: ({ children }) => (
-                    <h3 className="mt-4 text-sm font-semibold text-gray-900 first:mt-0">
-                      {children}
-                    </h3>
-                  ),
-                  p: ({ children }) => (
-                    <p className="mt-2 text-sm leading-relaxed text-gray-700 first:mt-0">
-                      {children}
-                    </p>
-                  ),
-                  strong: ({ children }) => (
-                    <strong className="font-semibold text-gray-900">
-                      {children}
-                    </strong>
-                  ),
-                  ul: ({ children }) => (
-                    <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-gray-700">
-                      {children}
-                    </ul>
-                  ),
-                  li: ({ children }) => <li>{children}</li>,
-                  hr: () => <hr className="my-4 border-gray-200" />,
-                }}
-              >
-                {briefing}
-              </ReactMarkdown>
+        {data && (
+          <>
+            {/* Numbers: all counted by code, not guessed by the AI */}
+            <div className="grid gap-4 md:grid-cols-3">
+              <StatCard
+                icon={<CalendarDays size={18} />}
+                label="Meetings"
+                value={String(data.meeting_count)}
+                description="Today"
+              />
+              <StatCard
+                icon={<CheckCircle2 size={18} />}
+                label="Priorities"
+                value={data.ai_error ? '–' : String(data.priorities.length)}
+                description="Need your attention"
+              />
+              <StatCard
+                icon={<AlertTriangle size={18} />}
+                label="Urgent"
+                value={data.ai_error ? '–' : String(highCount)}
+                description="High urgency"
+              />
             </div>
-          )}
-        </section>
 
-        {/* Today's schedule */}
-        <section className="rounded-2xl border bg-white shadow-sm">
-          <div className="border-b px-6 py-4">
-            <h2 className="font-semibold">Today</h2>
-          </div>
-
-          <div className="divide-y">
-            <ScheduleItem
-              time="09:00"
-              title="Product meeting"
-              type="Meeting"
-            />
-
-            <ScheduleItem
-              time="10:00"
-              title="Deep work"
-              type="Focus"
-            />
-
-            <ScheduleItem
-              time="12:00"
-              title="Lunch"
-              type="Personal"
-            />
-
-            <ScheduleItem
-              time="14:00"
-              title="Client meeting"
-              type="Meeting"
-              highlight
-            />
-
-            <ScheduleItem
-              time="16:00"
-              title="Deep work"
-              type="Focus"
-            />
-          </div>
-        </section>
-
-        {/* AI activity */}
-        <section className="rounded-2xl border bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="font-semibold">AI activity</h2>
-              <p className="mt-1 text-sm text-gray-500">
-                What ORBIT has done recently.
+            {data.ai_error && (
+              <p className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                {data.ai_error}
               </p>
-            </div>
+            )}
 
-            <a
-              href="/dashboard/assistant"
-              className="text-sm font-medium hover:underline"
-            >
-              View all
-            </a>
-          </div>
+            {(!data.connected.gmail || !data.connected.calendar) && (
+              <p className="rounded-xl bg-gray-50 px-4 py-3 text-sm text-gray-600">
+                {!data.connected.gmail && 'Gmail is not connected. '}
+                {!data.connected.calendar && 'Google Calendar is not connected. '}
+                Connect them from the Inbox and Calendar pages for a complete picture.
+              </p>
+            )}
 
-          <div className="mt-5 space-y-4">
-            <Activity text="Checked your calendar" />
-            <Activity text="Analyzed today's priorities" />
-            <Activity text="Found 3 unanswered emails" />
-          </div>
-        </section>
+            {/* AI summary of the day */}
+            <section className="rounded-2xl border bg-white p-6 shadow-sm">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Sparkles size={17} />
+                YOUR DAY
+              </div>
+              <p className="mt-3 text-base leading-7 text-gray-800">{data.summary}</p>
+            </section>
+
+            {/* Priorities: one card per email that needs action */}
+            <section className="rounded-2xl border bg-white shadow-sm">
+              <div className="border-b px-6 py-4">
+                <h2 className="font-semibold">Priorities</h2>
+                <p className="mt-0.5 text-xs text-gray-500">From your emails in the last 48 hours</p>
+              </div>
+              {data.priorities.length === 0 ? (
+                <p className="px-6 py-8 text-center text-sm text-gray-400">
+                  {/* Never claim "nothing important" when the AI simply didn't run. */}
+                  {data.ai_error
+                    ? 'Priorities will appear here once the AI is available again.'
+                    : 'Nothing needs your attention right now.'}
+                </p>
+              ) : (
+                <div className="divide-y">
+                  {data.priorities.map((p) => (
+                    <PriorityRow key={p.email_id + p.title} priority={p} />
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Meeting / interview prep: only shown when there is something to prepare */}
+            {data.prep.length > 0 && (
+              <section className="space-y-4">
+                {data.prep.map((item) => (
+                  <PrepCard key={item.title} prep={item} />
+                ))}
+              </section>
+            )}
+
+            {/* Today's real calendar */}
+            <section className="rounded-2xl border bg-white shadow-sm">
+              <div className="border-b px-6 py-4">
+                <h2 className="font-semibold">Today</h2>
+              </div>
+              {data.schedule.length === 0 ? (
+                <p className="px-6 py-8 text-center text-sm text-gray-400">No meetings today.</p>
+              ) : (
+                <div className="divide-y">
+                  {data.schedule.map((item, i) => (
+                    <ScheduleItem key={i} time={item.time} title={item.title} />
+                  ))}
+                </div>
+              )}
+            </section>
+          </>
+        )}
       </div>
+    </div>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div className="rounded-2xl border bg-white p-10 text-center shadow-sm">
+      <RefreshCw size={22} className="mx-auto animate-spin text-gray-400" />
+      <p className="mt-4 text-sm font-medium text-gray-700">Reading your emails and calendar…</p>
+      <p className="mt-1 text-xs text-gray-400">
+        The first load can take up to a minute. After that it&apos;s instant for 30 minutes.
+      </p>
+    </div>
+  );
+}
+
+function PriorityRow({ priority }: { priority: Priority }) {
+  return (
+    <div className="flex gap-4 px-6 py-4">
+      <span
+        className={`h-fit shrink-0 rounded-full px-2 py-0.5 text-xs font-medium capitalize ring-1 ${URGENCY_STYLE[priority.urgency]}`}
+      >
+        {priority.urgency}
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium text-gray-900">{priority.title}</p>
+        <p className="mt-0.5 text-sm text-gray-500">{priority.why}</p>
+        <p className="mt-2 text-sm text-gray-800">
+          <span className="font-medium">Next step: </span>
+          {priority.action}
+        </p>
+      </div>
+      <a
+        href={gmailLink(priority.email_id)}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Open in Gmail"
+        className="h-fit rounded-lg p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+      >
+        <ExternalLink size={16} />
+      </a>
+    </div>
+  );
+}
+
+function PrepCard({ prep }: { prep: MeetingPrep }) {
+  return (
+    <div className="rounded-2xl border bg-white p-6 shadow-sm">
+      <div className="flex items-center gap-2 text-sm font-medium">
+        <ClipboardList size={17} />
+        PREPARE
+      </div>
+      <h3 className="mt-3 text-lg font-semibold">{prep.title}</h3>
+      {prep.when && <p className="mt-0.5 text-sm text-gray-500">{prep.when}</p>}
+      <p className="mt-3 text-sm leading-6 text-gray-700">{prep.context}</p>
+      <ul className="mt-4 space-y-2">
+        {prep.checklist.map((step) => (
+          <li key={step} className="flex gap-2 text-sm text-gray-800">
+            <CheckCircle2 size={16} className="mt-0.5 shrink-0 text-gray-400" />
+            {step}
+          </li>
+        ))}
+      </ul>
+      {prep.email_id && (
+        <a
+          href={gmailLink(prep.email_id)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-4 inline-flex items-center gap-1 text-sm font-medium hover:underline"
+        >
+          Open email <ExternalLink size={14} />
+        </a>
+      )}
     </div>
   );
 }
@@ -247,57 +342,18 @@ function StatCard({
         {icon}
         {label}
       </div>
-
-      <div className="mt-4 text-2xl font-semibold">
-        {value}
-      </div>
-
-      <p className="mt-1 text-xs text-gray-500">
-        {description}
-      </p>
+      <div className="mt-4 text-2xl font-semibold">{value}</div>
+      <p className="mt-1 text-xs text-gray-500">{description}</p>
     </div>
   );
 }
 
-function ScheduleItem({
-  time,
-  title,
-  type,
-  highlight = false,
-}: {
-  time: string;
-  title: string;
-  type: string;
-  highlight?: boolean;
-}) {
+function ScheduleItem({ time, title }: { time: string; title: string }) {
   return (
-    <div
-      className={`flex items-center gap-6 px-6 py-4 ${
-        highlight ? "bg-gray-50" : ""
-      }`}
-    >
-      <span className="w-14 text-sm font-medium text-gray-500">
-        {time}
-      </span>
-
+    <div className="flex items-center gap-6 px-6 py-4">
+      <span className="w-14 text-sm font-medium text-gray-500">{time}</span>
       <div className="h-2 w-2 rounded-full bg-black" />
-
-      <div className="flex-1">
-        <p className="text-sm font-medium">{title}</p>
-        <p className="mt-0.5 text-xs text-gray-500">{type}</p>
-      </div>
-    </div>
-  );
-}
-
-function Activity({ text }: { text: string }) {
-  return (
-    <div className="flex items-center gap-3 text-sm">
-      <div className="h-2 w-2 rounded-full bg-green-500" />
-      <span>{text}</span>
-      <span className="ml-auto text-xs text-gray-400">
-        Just now
-      </span>
+      <p className="flex-1 text-sm font-medium">{title}</p>
     </div>
   );
 }

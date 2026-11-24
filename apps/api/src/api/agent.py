@@ -81,7 +81,12 @@ def reset_conversation(user_id: str):
 
 
 def error_response(error: Exception, user_id: str) -> dict:
-    reset_conversation(user_id)
+    # The reset talks to the database. If the database is the thing that failed,
+    # the reset fails too; don't let that turn our friendly reply into a raw 500.
+    try:
+        reset_conversation(user_id)
+    except Exception as reset_error:
+        print(f"reset_conversation failed: {reset_error!r}")
     if "RESOURCE_EXHAUSTED" in str(error) or "429" in str(error):
         reason = "the Gemini API quota is used up for now"
     else:

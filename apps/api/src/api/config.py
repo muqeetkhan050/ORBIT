@@ -34,6 +34,10 @@ DATABASE_URL = os.environ["DATABASE_URL"]
 
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 
+# Time zone for calendar events and for telling the agent what "today" is.
+# One value for now; later this should come from each user's settings.
+USER_TIMEZONE = "Australia/Brisbane"
+
 # Secret used to sign the OAuth "state" parameter (see auth.py).
 OAUTH_STATE_SECRET = os.environ["OAUTH_STATE_SECRET"]
 

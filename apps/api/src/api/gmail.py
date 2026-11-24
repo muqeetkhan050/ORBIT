@@ -1,4 +1,5 @@
 import base64
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from urllib.parse import urlencode
 
@@ -139,7 +140,7 @@ def extract_header(headers: list[dict], name: str) -> str:
     return ""
 
 
-def fetch_gmail_messages(user_id: str):
+def fetch_gmail_messages(user_id: str, query: str | None = None, max_results: int = 10):
     tokens = load_tokens(user_id)
     if tokens is None:
         raise HTTPException(status_code=401, detail="Not connected")
@@ -147,10 +148,16 @@ def fetch_gmail_messages(user_id: str):
     def auth_headers(access_token: str):
         return {"Authorization": f"Bearer {access_token}"}
 
+    # Built once so the first call and the retry after a token refresh
+    # always ask Gmail for the same emails.
+    list_params = {"maxResults": max_results}
+    if query:
+        list_params["q"] = query  # same syntax as the Gmail search box
+
     list_response = httpx.get(
         "https://gmail.googleapis.com/gmail/v1/users/me/messages",
         headers=auth_headers(tokens["access_token"]),
-        params={"maxResults": 10},
+        params=list_params,
     )
 
     if list_response.status_code == 401:
@@ -158,7 +165,7 @@ def fetch_gmail_messages(user_id: str):
         list_response = httpx.get(
             "https://gmail.googleapis.com/gmail/v1/users/me/messages",
             headers=auth_headers(tokens["access_token"]),
-            params={"maxResults": 10},
+            params=list_params,
         )
 
     list_response.raise_for_status()
@@ -189,6 +196,13 @@ def fetch_gmail_messages(user_id: str):
         )
 
     return messages
+
+
+def fetch_recent_emails(user_id: str, hours: int = 48) -> list[dict]:
+    """Inbox emails from the last `hours` hours, without promotions/social noise."""
+    since = datetime.now(timezone.utc) - timedelta(hours=hours)
+    query = f"in:inbox after:{int(since.timestamp())} -category:promotions -category:social"
+    return fetch_gmail_messages(user_id, query=query, max_results=30)
 
 
 
