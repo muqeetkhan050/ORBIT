@@ -12,6 +12,7 @@ from api.config import (
     GOOGLE_CLIENT_SECRET,
     GMAIL_REDIRECT_URI,
     GMAIL_SCOPES,
+    FRONTEND_URL,
 )
 from api.database import SessionLocal
 from api.models import Integration
@@ -21,7 +22,7 @@ router = APIRouter()
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-FRONTEND_INBOX_URL = "http://localhost:3000/dashboard/inbox"
+FRONTEND_INBOX_URL = f"{FRONTEND_URL}/dashboard/inbox"
 PROVIDER = "gmail"
 
 

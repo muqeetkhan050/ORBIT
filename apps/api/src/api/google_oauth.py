@@ -12,6 +12,7 @@ from api.config import (
     GOOGLE_REDIRECT_URI,
     GOOGLE_SCOPES,
     USER_TIMEZONE,
+    FRONTEND_URL,
 )
 from api.database import SessionLocal
 from api.models import Integration
@@ -21,7 +22,7 @@ router = APIRouter()
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
-FRONTEND_CALENDAR_URL = "http://localhost:3000/dashboard/calendar"
+FRONTEND_CALENDAR_URL = f"{FRONTEND_URL}/dashboard/calendar"
 PROVIDER = "google_calendar"
 
 

@@ -14,33 +14,7 @@ GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/calendar.events",
 ]
 
-TOKENS_FILE = ".tokens.json"
-
 GMAIL_REDIRECT_URI = os.environ["GMAIL_REDIRECT_URI"]
-
-GMAIL_SCOPES = [
-    "openid",
-    "https://www.googleapis.com/auth/userinfo.email",
-    "https://www.googleapis.com/auth/userinfo.profile",
-    "https://www.googleapis.com/auth/gmail.readonly",
-]
-
-GMAIL_TOKENS_FILE = ".gmail_tokens.json"
-
-GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
-
-
-DATABASE_URL = os.environ["DATABASE_URL"]
-
-SUPABASE_URL = os.environ["SUPABASE_URL"]
-
-# Time zone for calendar events and for telling the agent what "today" is.
-# One value for now; later this should come from each user's settings.
-USER_TIMEZONE = "Australia/Brisbane"
-
-# Secret used to sign the OAuth "state" parameter (see auth.py).
-OAUTH_STATE_SECRET = os.environ["OAUTH_STATE_SECRET"]
-
 
 GMAIL_SCOPES = [
     "openid",
@@ -49,3 +23,20 @@ GMAIL_SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.send",
 ]
+
+GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+
+DATABASE_URL = os.environ["DATABASE_URL"]
+
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+
+# Where the website runs. localhost on your laptop; the Vercel address after deploying.
+# os.environ[...] (not .get) so a missing value crashes at startup with a clear error.
+FRONTEND_URL = os.environ["FRONTEND_URL"]
+
+# Time zone for calendar events and for telling the agent what "today" is.
+# One value for now; later this should come from each user's settings.
+USER_TIMEZONE = "Australia/Brisbane"
+
+# Secret used to sign the OAuth "state" parameter (see auth.py).
+OAUTH_STATE_SECRET = os.environ["OAUTH_STATE_SECRET"]
