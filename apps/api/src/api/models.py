@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy import Boolean, Column, Date, DateTime, Integer, String
 from sqlalchemy.sql import func
 
 from api.database import Base
@@ -12,5 +12,18 @@ class Integration(Base):
     provider = Column(String, nullable=False)
     access_token = Column(String, nullable=False)
     refresh_token = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class Task(Base):
+    __tablename__ = "tasks"
+
+    id = Column(Integer, primary_key=True)
+    user_id = Column(String, nullable=False, index=True)
+    title = Column(String, nullable=False)
+    notes = Column(String, nullable=True)
+    due_date = Column(Date, nullable=True)
+    done = Column(Boolean, nullable=False, default=False, server_default="false")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

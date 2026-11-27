@@ -6,7 +6,8 @@ from sqlalchemy import pool
 from alembic import context
 from api.config import DATABASE_URL
 from api.database import Base
-from api.models import Integration
+from api.models import Integration, Task  # noqa: F401  (imported so Alembic sees these tables)
+
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -23,6 +24,14 @@ if config.config_file_name is not None:
 # from myapp import mymodel
 # target_metadata = mymodel.Base.metadata
 target_metadata = Base.metadata
+
+
+def include_name(name, type_, parent_names):
+    # Only manage tables defined in our models; ignore LangGraph's checkpoint tables,
+    # otherwise autogenerate would write drop_table() for them.
+    if type_ == "table":
+        return name in target_metadata.tables
+    return True
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -48,6 +57,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_name=include_name,
     )
 
     with context.begin_transaction():
@@ -69,7 +79,9 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            include_name=include_name,
         )
 
         with context.begin_transaction():

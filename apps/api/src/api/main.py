@@ -7,6 +7,7 @@ from api.gmail import router as gmail_router
 from api.google_oauth import router as google_oauth_router
 from api.agent import router as agent_router
 from api.today import router as today_router
+from api.tasks import router as tasks_router
 
 app = FastAPI()
 
@@ -48,5 +49,10 @@ app.include_router(
 app.include_router(
     today_router,
     prefix="/api/v1/today",
+)
+
+app.include_router(
+    tasks_router,
+    prefix="/api/v1/tasks",
 )
 
