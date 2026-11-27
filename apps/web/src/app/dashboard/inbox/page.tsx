@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { PageHeader } from '@/src/components/layout/page-header'
 import { apiFetch } from '@/src/lib/api'
 
 export default function InboxPage() {
@@ -24,15 +25,10 @@ export default function InboxPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 py-10">
-      <header className="mb-10">
-        <h1 className="text-2xl font-semibold tracking-tight text-neutral-900">
-          Inbox
-        </h1>
-        <p className="mt-1 text-sm text-neutral-500">
-          Your email, understood by AURA.
-        </p>
-      </header>
+    <div>
+      <PageHeader title="Inbox" subtitle="Your email, understood by AURA." />
+
+      <div className="mx-auto w-full max-w-3xl px-6 py-10">
 
       {connected === null ? (
         <div className="rounded-2xl border border-neutral-200 bg-white p-10 text-center text-sm text-neutral-400">
@@ -43,6 +39,7 @@ export default function InboxPage() {
       ) : (
         <ConnectEmptyState onConnect={handleConnect} />
       )}
+      </div>
     </div>
   )
 }

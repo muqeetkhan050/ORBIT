@@ -10,6 +10,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { PageHeader } from '@/src/components/layout/page-header';
 import { apiFetch } from '@/src/lib/api';
 import { createClient } from '@/src/lib/supabase/client';
 
@@ -113,18 +114,13 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen">
-      <header className="border-b bg-white px-8 py-5">
-        <div className="mx-auto flex max-w-7xl items-end justify-between gap-4">
-          <div>
-            <p className="text-sm text-gray-500">{data?.date ?? ' '}</p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-              {greeting()}
-              {name && `, ${name}`}
-            </h1>
-            <p className="mt-1 text-sm text-gray-500">Here&apos;s what matters today.</p>
-          </div>
-
-          <div className="flex items-center gap-3">
+      {/* Date moved into the subtitle: 2 lines, so this header has the same height as every other page. */}
+      <PageHeader
+        width="max-w-7xl"
+        title={`${greeting()}${name ? `, ${name}` : ''}`}
+        subtitle={data ? `${data.date} · Here's what matters today.` : "Here's what matters today."}
+        actions={
+          <>
             {data && !loading && (
               <span className="text-xs text-gray-400">Updated {minutesAgo(data.generated_at)}</span>
             )}
@@ -136,9 +132,9 @@ export default function DashboardPage() {
               <RefreshCw size={15} className={loading ? 'animate-spin' : ''} />
               {loading ? 'Updating…' : 'Refresh'}
             </button>
-          </div>
-        </div>
-      </header>
+          </>
+        }
+      />
 
       <div className="mx-auto max-w-7xl space-y-6 p-8">
         {error && (

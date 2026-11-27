@@ -4,17 +4,13 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/src/lib/supabase/client";
+import { HEADER_HEIGHT } from "@/src/components/layout/page-header";
 import {
   Home,
   Inbox,
   CalendarDays,
   CheckSquare,
-  Target,
-  Users,
-  Brain,
   Bot,
-  Zap,
-  BarChart3,
   Plug,
   Settings,
   Orbit,
@@ -26,12 +22,7 @@ const mainNavigation = [
   { name: "Inbox", href: "/dashboard/inbox", icon: Inbox },
   { name: "Calendar", href: "/dashboard/calendar", icon: CalendarDays },
   { name: "Tasks", href: "/dashboard/tasks", icon: CheckSquare },
-  { name: "Goals", href: "/dashboard/goals", icon: Target },
-  { name: "People", href: "/dashboard/people", icon: Users },
-  { name: "Knowledge", href: "/dashboard/knowledge", icon: Brain },
   { name: "AI Assistant", href: "/dashboard/assistant", icon: Bot },
-  { name: "Automations", href: "/dashboard/automations", icon: Zap },
-  { name: "Insights", href: "/dashboard/insights", icon: BarChart3 },
 ];
 
 const bottomNavigation = [
@@ -46,16 +37,18 @@ export function Sidebar() {
   const router = useRouter();
   const [user, setUser] = useState<SidebarUser | null>(null);
 
-  // Load the logged-in user from Supabase once, when the sidebar first appears.
+  // Load the logged-in user, and keep it updated: when the name is changed on the
+  // Settings page, Supabase fires a "USER_UPDATED" event and the sidebar re-renders.
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getUser().then(({ data }) => {
-      const email = data.user?.email ?? "";
-      // No name is collected at sign-up yet, so use a full_name if one exists,
-      // otherwise the part of the email before "@".
-      const name = data.user?.user_metadata?.full_name ?? email.split("@")[0];
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      const email = session?.user.email ?? "";
+      // Use full_name if one is set (Settings page), otherwise the part of the email before "@".
+      const name = session?.user.user_metadata?.full_name || email.split("@")[0];
       setUser({ name, email });
     });
+    // Stop listening when the sidebar disappears, so listeners don't pile up.
+    return () => listener.subscription.unsubscribe();
   }, []);
 
   async function handleLogout() {
@@ -66,8 +59,11 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="flex h-screen w-64 flex-col border-r bg-white">
-      <div className="flex h-16 items-center gap-3 border-b px-6">
+    // sticky top-0: stays pinned to the top of the window while the page content scrolls.
+    // shrink-0: never squeezed narrower by wide page content.
+    <aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r bg-white">
+      {/* Same height as PageHeader, so the two bottom borders form one straight line. */}
+      <div className={`flex ${HEADER_HEIGHT} shrink-0 items-center gap-3 border-b px-6`}>
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-black text-white">
           <Orbit size={18} />
         </div>
